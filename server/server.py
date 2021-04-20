@@ -6,7 +6,11 @@ import traceback
 from resolver import create_response
 
 
-class Handler(BaseRequestHandler):
+class DNSServer(BaseRequestHandler):
+    def __init__(self, address, port):
+        self.servers = [ThreadingUDPServer((address, port), UDPHandler),
+                        ThreadingTCPServer((address, port), TCPHandler), ]
+
     def handle(self):
         try:
             self.send_data(create_response(self.get_data()))
@@ -14,18 +18,35 @@ class Handler(BaseRequestHandler):
             print('Failed to process request', file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
+    def start(self):
+        for server in self.servers:
+            threading.Thread(target=server.serve_forever, daemon=True).start()
 
-class TCPHandler(Handler):
+    def main_loop(self):
+        try:
+            while True:
+                time.sleep(.5)
+                sys.stderr.flush()
+                sys.stdout.flush()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for server in self.servers:
+                server.shutdown()
+
+
+class TCPHandler(DNSServer):
     def get_data(self):
-        data = self.request.recv(8192).strip()
-        if len(data) - 2 != int(data[:2].hex(), 16): raise Exception("Invalid TCP packet")
+        buff = self.request.recv(8192).strip()
+        buff_size, size_filed, data = len(buff) - 2, int(buff[:2].hex(), 16), buff[2:]
+        if buff_size != size_filed: raise Exception("Invalid TCP packet")
         return data[2:]
 
     def send_data(self, data):
         return self.request.sendall(bytes.fromhex(hex(len(data))[2:].zfill(4)) + data)
 
 
-class UDPHandler(Handler):
+class UDPHandler(DNSServer):
     def get_data(self):
         return self.request[0]
 
@@ -33,30 +54,9 @@ class UDPHandler(Handler):
         return self.request[1].sendto(data, self.client_address)
 
 
-def start_servers():
-    servers = [ThreadingUDPServer(('0.0.0.0', 53), UDPHandler),
-               ThreadingTCPServer(('0.0.0.0', 53), TCPHandler),]
-    for server in servers:
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-    return servers
-
-
-def main_loop(servers):
-    try:
-        while True:
-            time.sleep(.5)
-            sys.stderr.flush()
-            sys.stdout.flush()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        for server in servers:
-            server.shutdown()
-
-
 if __name__ == '__main__':
     print("Starting TinyDNS nameserver..")
-    srvs = start_servers()
+    server = DNSServer('0.0.0.0', 53)
+    server.start()
     print("TinyDNS server running...")
-    main_loop(srvs)
+    server.main_loop()
