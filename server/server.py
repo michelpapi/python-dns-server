@@ -36,6 +36,22 @@ class Server(BaseRequestHandler):
             print('Failed to process request', file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
+    def start(self):
+        for server in self.servers:
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def main_loop(self):
+        try:
+            while True:
+                time.sleep(.5)
+                sys.stderr.flush()
+                sys.stdout.flush()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for server in self.servers:
+                server.shutdown()
+
 
 class TCPHandler(Server):
     def get_data(self):
@@ -58,7 +74,7 @@ class UDPHandler(Server):
 
 if __name__ == '__main__':
     print("Starting TinyDNS nameserver..")
-    server = DNSServer('127.0.0.1', 5053)
+    server = DNSServer('0.0.0.0', 53)
     server.start()
     print("TinyDNS server running...")
     server.main_loop()
