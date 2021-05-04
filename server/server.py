@@ -6,17 +6,10 @@ import traceback
 from resolver import create_response
 
 
-class DNSServer(BaseRequestHandler):
+class DNSServer():
     def __init__(self, address, port):
         self.servers = [ThreadingUDPServer((address, port), UDPHandler),
                         ThreadingTCPServer((address, port), TCPHandler), ]
-
-    def handle(self):
-        try:
-            self.send_data(create_response(self.get_data()))
-        except Exception as e:
-            print('Failed to process request', file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
 
     def start(self):
         for server in self.servers:
@@ -35,7 +28,16 @@ class DNSServer(BaseRequestHandler):
                 server.shutdown()
 
 
-class TCPHandler(DNSServer):
+class Server(BaseRequestHandler):
+    def handle(self):
+        try:
+            self.send_data(create_response(self.get_data()))
+        except Exception as e:
+            print('Failed to process request', file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+
+
+class TCPHandler(Server):
     def get_data(self):
         buff = self.request.recv(8192).strip()
         buff_size, size_filed, data = len(buff) - 2, int(buff[:2].hex(), 16), buff[2:]
@@ -46,7 +48,7 @@ class TCPHandler(DNSServer):
         return self.request.sendall(bytes.fromhex(hex(len(data))[2:].zfill(4)) + data)
 
 
-class UDPHandler(DNSServer):
+class UDPHandler(Server):
     def get_data(self):
         return self.request[0]
 
@@ -56,7 +58,7 @@ class UDPHandler(DNSServer):
 
 if __name__ == '__main__':
     print("Starting TinyDNS nameserver..")
-    server = DNSServer('0.0.0.0', 53)
+    server = DNSServer('127.0.0.1', 5053)
     server.start()
     print("TinyDNS server running...")
     server.main_loop()
